@@ -1,0 +1,1391 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>World Atelier – Enhanced Atmosphere + Layers + Node Explorer</title>
+  <style>
+    :root{
+      --bg0:#0a0d14; --panel:#121826; --surface:#0e1528; --ink:#e7eaf0; --muted:#9bb0c9; --accent:#5eead4;
+      --line:#23314b; --good:#10b981; --warn:#f59e0b; --bad:#ef4444; --hud:#0b1226d0;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background: radial-gradient(1200px 800px at 60% -10%, #0b1220 0%, #0b1020 60%, #0a0d1a 100%); color:var(--ink);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial; overflow:hidden}
+    .shell{position:fixed; inset:0; display:grid;
+      grid-template-columns: 320px 1fr; grid-template-rows: auto 1fr auto;
+      grid-template-areas: "sidebar toolbar" "sidebar canvas" "sidebar status";}
+    .sidebar{ grid-area: sidebar; background:rgba(10,15,28,.92); border-right:1px solid var(--line); padding:14px; overflow:auto; backdrop-filter: blur(10px); }
+    .toolbar{ grid-area: toolbar; display:flex; gap:10px; align-items:center; padding:10px 12px; background:rgba(10,15,28,.92); border-bottom:1px solid var(--line); backdrop-filter: blur(10px); }
+    .status{ grid-area: status; display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(10,15,28,.92); border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
+    h1{ margin:0 0 8px; font-size:16px; color:var(--accent); font-weight:700 }
+    h3{ margin:12px 0 8px; color:var(--accent); font-size:13px }
+    label{ font-size:12px; color:var(--muted) }
+    .row{ display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; margin:6px 0 }
+    .grid2{ display:grid; grid-template-columns: 1fr 1fr; gap:8px }
+    .grid3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px }
+    select, input[type="number"], input[type="text"], input[type="color"], button{
+      width:100%; background:var(--surface); color:var(--ink); border:1px solid var(--line);
+      border-radius:8px; padding:8px 10px; font-size:12px; font-family:inherit; }
+    input[type="range"]{ width:100%; accent-color:var(--accent) }
+    input[type="checkbox"]{ width:auto; accent-color:var(--accent) }
+    button{ cursor:pointer }
+    button.good{ border-color:var(--good); color:var(--good) }
+    button.warn{ border-color:var(--warn); color:var(--warn) }
+    button.bad{ border-color:var(--bad); color:var(--bad) }
+    .pill{ padding:2px 6px; border:1px solid var(--line); border-radius:999px; font-size:11px; color:#bfe; margin-right:6px }
+    .mini{ font-size:11px; opacity:.9 }
+    .hr{ height:1px; background:linear-gradient(90deg,transparent,#1d2b44,transparent); margin:10px 0 }
+
+    /* Canvas stage with layered background */
+    #stage{ grid-area: canvas; position:relative; overflow:hidden; cursor:none; }
+    #bgLayer{ position:absolute; inset:0; background-position:center; background-size:cover; background-repeat:no-repeat; z-index:0; }
+    #bgVideo{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; display:none }
+    canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; z-index:2; }
+    #overlayHost{ position:absolute; inset:0; z-index:2; pointer-events:none; }
+    .overlay{ position:absolute; top:50%; left:50%; transform-origin:center; max-width:none; image-rendering:auto; pointer-events:auto; box-shadow:0 0 0 1px rgba(255,255,255,.08); }
+    .overlay.hidden{ display:none }
+    .overlay.selected{ outline:1px dashed var(--accent) }
+
+    /* HUD */
+    #hud{ position:absolute; left:10px; bottom:10px; background:var(--hud); border:1px solid var(--line); border-radius:12px; padding:10px 12px; backdrop-filter:blur(6px); max-width:520px; z-index:3 }
+    #hud h4{ margin:0 0 6px 0; font-size:12px; color:#cfe2ff; opacity:.9 }
+    #hud .line{ display:flex; gap:8px; align-items:center; font-size:12px; flex-wrap:wrap }
+    #hud .pill{ padding:2px 6px; border-radius:999px; background:#16224b; color:#bfe4ff; border:1px solid #24407a }
+
+    .tabbar{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px }
+    .tab{ border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12px; background:var(--surface) }
+    .tab.active{ outline:2px solid var(--accent); outline-offset:1px; color:var(--accent) }
+    .panel{ display:none }
+    .panel.active{ display:block }
+
+    /* Layers UI */
+    #layerList{ display:flex; flex-direction:column; gap:6px; margin-top:8px }
+    .layerItem{ display:grid; grid-template-columns:auto 1fr auto auto auto auto; gap:6px; align-items:center; padding:6px; border:1px solid var(--line); border-radius:8px; background:rgba(12,16,28,.6) }
+    .layerItem .name{ font-size:12px }
+    .layerItem .type{ font-size:11px; color:var(--muted) }
+    .layerItem button{ padding:6px 8px }
+    .inspector{ margin-top:10px; padding:8px; border:1px solid var(--line); border-radius:8px; background:rgba(12,16,28,.4) }
+
+    /* Movement controls indicator */
+    .movement-mode{ position:absolute; top:10px; right:10px; background:var(--hud); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:11px; color:var(--accent); z-index:3; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="sidebar">
+      <h1>World Atelier – Enhanced</h1>
+      <div class="tabbar">
+        <div class="tab active" data-tab="atmo">🌌 Atmosphere</div>
+        <div class="tab" data-tab="layers">🖼 Layers</div>
+        <div class="tab" data-tab="explore">🧭 Explore</div>
+        <div class="tab" data-tab="export">📦 Export</div>
+      </div>
+
+      <div id="panel-atmo" class="panel active">
+        <h3>Background</h3>
+        <div class="row">
+          <label>Mode</label>
+          <select id="bgMode">
+            <option value="gradient">CSS Gradient</option>
+            <option value="image">Image (cover)</option>
+            <option value="video">Video (cover)</option>
+            <option value="panorama">Panorama (equirect)</option>
+            <option value="panorama-video">Panoramic Video</option>
+            <option value="stars">Procedural Stars</option>
+          </select>
+        </div>
+        <div class="grid2" id="gradOpts">
+          <div>
+            <label>Top Color</label>
+            <input id="gradTop" type="color" value="#0b1220" />
+          </div>
+          <div>
+            <label>Bottom Color</label>
+            <input id="gradBot" type="color" value="#0a0d1a" />
+          </div>
+        </div>
+        <div class="grid2" id="imgBtns" style="margin-top:8px">
+          <button id="pickImage">📷 Load Image</button>
+          <button id="clearImage" class="bad">✖ Clear</button>
+        </div>
+        <div class="grid2" id="vidBtns" style="display:none; margin-top:8px">
+          <button id="pickVideo">🎞 Load Video</button>
+          <button id="stopVideo" class="bad">⏹ Stop</button>
+        </div>
+        <div class="grid2" id="panoVidBtns" style="display:none; margin-top:8px">
+          <button id="pickPanoVideo">🌐 Load Pano Video</button>
+          <button id="stopPanoVideo" class="bad">⏹ Stop</button>
+        </div>
+        <div id="starOpts" style="display:none">
+          <div class="row"><label>Density <span id="vStarCount">2000</span></label><input id="starCount" type="range" min="0" max="8000" step="100" value="2000"/></div>
+          <div class="row"><label>Size</label><input id="starSize" type="range" min="0.2" max="3" step="0.1" value="1.2"/></div>
+        </div>
+        <div class="hr"></div>
+        <h3>Atmospherics</h3>
+        <div class="row"><label>Fog / Haze</label><input id="fogStrength" type="range" min="0" max="1" step="0.01" value="0.15"/></div>
+        <div class="row"><label>Fog Color</label><input id="fogColor" type="color" value="#0b1120"/></div>
+        <div class="hr"></div>
+        <h3>Scene Setup</h3>
+        <div class="row"><label>Show Floor</label><input id="showFloor" type="checkbox" checked/></div>
+        <div class="mini">Uncheck to remove floor for full 360° exploration</div>
+        <div class="mini">Tip: drag & drop an image onto the stage to add it as a 2D overlay layer.</div>
+      </div>
+
+      <div id="panel-layers" class="panel">
+        <h3>Image Layers</h3>
+        <div class="grid3">
+          <button id="addLayer2D">+ Add 2D Overlay</button>
+          <button id="addLayer3D">+ Add 3D Plane</button>
+          <button id="addLayerBillboard">+ Add 3D Billboard</button>
+        </div>
+        <div class="mini" style="margin-top:6px">Use your own files. 2D overlays sit over the 3D view with CSS blend modes; 3D planes live inside the scene. Billboards face the camera.</div>
+        <div id="layerList"></div>
+        <div id="layerInspector" class="inspector" style="display:none">
+          <h3>Inspector</h3>
+          <div class="row"><label>Name</label><input id="liName" type="text" /></div>
+          <div class="grid3">
+            <div class="row"><label>Visible</label><input id="liVisible" type="checkbox" /></div>
+            <div class="row"><label>Opacity</label><input id="liOpacity" type="range" min="0" max="1" step="0.01" value="1"/></div>
+            <div class="row"><label>Blend</label>
+              <select id="liBlend">
+                <option value="normal">normal</option>
+                <option value="multiply">multiply</option>
+                <option value="screen">screen</option>
+                <option value="overlay">overlay</option>
+                <option value="lighten">lighten</option>
+                <option value="darken">darken</option>
+                <option value="add">add/plus-lighter</option>
+              </select>
+            </div>
+          </div>
+          <div id="li2D" style="display:none">
+            <div class="grid3">
+              <div class="row"><label>X (%)</label><input id="liX" type="range" min="0" max="100" step="0.1"/></div>
+              <div class="row"><label>Y (%)</label><input id="liY" type="range" min="0" max="100" step="0.1"/></div>
+              <div class="row"><label>Size (% of width)</label><input id="liSize" type="range" min="5" max="200" step="1"/></div>
+            </div>
+            <div class="grid2">
+              <div class="row"><label>Z Rotation (°)</label><input id="liRot" type="range" min="-180" max="180" step="1"/></div>
+              <div class="row"><label>Y Rotation (°)</label><input id="liRotY" type="range" min="-180" max="180" step="1" value="0"/></div>
+            </div>
+            <div class="grid2" style="margin-top:6px">
+              <button id="liCenter">Center</button>
+              <button id="liFit">Fit Width</button>
+            </div>
+            <div class="grid2" style="margin-top:6px">
+              <button id="liVectorize">Vectorize → SVG</button>
+              <div class="row"><label>Trace detail</label><input id="liTraceDetail" type="range" min="1" max="10" step="1" value="3"/></div>
+            </div>
+          </div>
+          <div id="li3D" style="display:none">
+            <div class="grid3">
+              <div class="row"><label>Pos X</label><input id="liPX" type="range" min="-50" max="50" step="0.1"/></div>
+              <div class="row"><label>Pos Y</label><input id="liPY" type="range" min="-50" max="50" step="0.1"/></div>
+              <div class="row"><label>Pos Z</label><input id="liPZ" type="range" min="-50" max="50" step="0.1"/></div>
+            </div>
+            <div class="grid3">
+              <div class="row"><label>Size</label><input id="liPSize" type="range" min="0.1" max="50" step="0.1"/></div>
+              <div class="row"><label>Yaw (°)</label><input id="liPRY" type="range" min="-180" max="180" step="1"/></div>
+              <div class="row"><label>Pitch (°)</label><input id="liPRX" type="range" min="-90" max="90" step="1" value="0"/></div>
+            </div>
+            <div class="grid2">
+              <div class="row"><label>Roll (°)</label><input id="liPRZ" type="range" min="-180" max="180" step="1" value="0"/></div>
+              <div class="row"><label>Billboard</label><input id="liBillboard" type="checkbox"/></div>
+            </div>
+          </div>
+          <div class="grid3" style="margin-top:8px">
+            <button id="liUp">▲ Up</button>
+            <button id="liDown">▼ Down</button>
+            <button id="liDelete" class="bad">🗑 Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-explore" class="panel">
+        <h3>Enhanced Movement</h3>
+        <div class="row"><label>Movement Mode</label>
+          <select id="movementMode">
+            <option value="orbit">Orbit Camera</option>
+            <option value="fps">First Person (FPS)</option>
+            <option value="free">Free Flight</option>
+          </select>
+        </div>
+        <div class="row"><label>Movement Speed</label><input id="moveSpeed" type="range" min="1" max="50" step="1" value="15"/></div>
+        <div class="row"><label>Sprint Multiplier</label><input id="sprintMultiplier" type="range" min="1.5" max="5" step="0.1" value="2.5"/></div>
+        <div class="row"><label>Mouse Sensitivity</label><input id="mouseSensitivity" type="range" min="0.1" max="3" step="0.1" value="1"/></div>
+        <div class="mini">
+          <b>Orbit:</b> Right-drag orbit, wheel zoom<br/>
+          <b>FPS:</b> Mouse look, WASD move, Space jump, Shift crouch<br/>
+          <b>Free:</b> WASD + mouse look in all directions, Space up, Shift down<br/>
+          <b>All modes:</b> Hold Shift to sprint, C to reset position
+        </div>
+        <div class="hr"></div>
+        <h3>Microscopic Node</h3>
+        <div class="row"><label>Thrust</label><input id="thrust" type="range" min="0.5" max="10" step="0.1" value="4"/></div>
+        <div class="grid2" style="margin-top:6px">
+          <button id="spawnNode">🧪 Spawn Node</button>
+          <button id="followNode">🎥 Follow (F)</button>
+        </div>
+        <div class="hr"></div>
+        <h3>World</h3>
+        <div class="grid2">
+          <button id="spawnAttractors">🌌 Spawn Attractors</button>
+          <button id="clearAttractors" class="bad">✖ Clear</button>
+        </div>
+        <div class="mini">Attractors are soft gravity points; nodes are pulled subtly for pleasant arcs.</div>
+      </div>
+
+      <div id="panel-export" class="panel">
+        <h3>Export / Import</h3>
+        <div class="grid2">
+          <button id="savePNG" class="good">⬇ Save PNG</button>
+          <button id="exportJSON" class="good">⬇ Export Session</button>
+        </div>
+        <div class="grid2" style="margin-top:8px">
+          <button id="importJSON" class="good">⬆ Import Session</button>
+          <button id="resetAll" class="bad">🔄 Reset All</button>
+        </div>
+        <div class="mini">PNG captures current frame; session JSON stores all settings, background, fog, stars, node, and layers with full data.</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <span class="pill">FPS: <b id="hudFPS">60</b></span>
+      <span class="pill">Nodes: <b id="hudNodes">0</b></span>
+      <span class="pill">Stars: <b id="hudStars">0</b></span>
+      <span class="pill">Layers: <b id="hudLayerCount">0</b></span>
+      <span class="pill">Draw: <b id="hudDraw">0.0ms</b></span>
+      <span class="pill">Mode: <b id="hudMovementMode">Orbit</b></span>
+      <span class="pill">Floor: <b id="hudFloor">On</b></span>
+    </div>
+
+    <div id="stage">
+      <div id="bgLayer"></div>
+      <video id="bgVideo" muted loop playsinline></video>
+      <canvas id="view"></canvas>
+      <div id="overlayHost"></div>
+      <div id="hud">
+        <h4>Live Telemetry</h4>
+        <div class="line">
+          <span class="pill">node: <span id="nodePos">—</span></span>
+          <span class="pill">cam: <span id="camPos">—</span></span>
+          <span class="pill">sel layer: <span id="selLayer">—</span></span>
+        </div>
+        <div class="line mini" id="controlHints">
+          <span class="pill">Drag: move</span>
+          <span class="pill">Alt+Drag: scale</span>
+          <span class="pill">Ctrl+Drag: rotate</span>
+        </div>
+      </div>
+      <div class="movement-mode" id="movementIndicator">Orbit Mode</div>
+    </div>
+
+    <div class="status">
+      <div>Enhanced Edition • panoramic video • enhanced movement • vectorization • floor toggle • full rotation</div>
+      <div id="build">World Atelier r5-enhanced-v2</div>
+    </div>
+  </div>
+
+  <!-- Hidden pickers -->
+  <input id="fileImage" type="file" accept="image/*" style="display:none" />
+  <input id="fileVideo" type="file" accept="video/*" style="display:none" />
+  <input id="filePanorama" type="file" accept="image/*" style="display:none" />
+  <input id="filePanoVideo" type="file" accept="video/*" style="display:none" />
+  <input id="fileLayer" type="file" accept="image/*" multiple style="display:none" />
+  <input id="fileImport" type="file" accept=".json" style="display:none" />
+
+  <!-- three.js (r128) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script>
+  // ========= Tiny utils =========
+  const $ = (id)=>document.getElementById(id);
+  function dl(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 1000); }
+  function hexToInt(h){ return parseInt(h.replace('#','0x')); }
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+
+  // ========= Scene =========
+  const canvas = $('view');
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  function resize(){ const w=canvas.parentElement.clientWidth; const h=canvas.parentElement.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); refreshOverlayLayouts(); }
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 3000); camera.position.set(10,7,14);
+  
+  // Enhanced movement system
+  let movementMode = 'orbit';
+  let moveSpeed = 15;
+  let sprintMultiplier = 2.5;
+  let mouseSensitivity = 1;
+  let isPointerLocked = false;
+  let euler = new THREE.Euler(0, 0, 0, 'YXZ');
+  let velocity = new THREE.Vector3();
+  let direction = new THREE.Vector3();
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement); 
+  controls.enableDamping=true;
+
+  const hemi = new THREE.HemisphereLight(0xaadfff, 0x233344, 0.65); scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9); dir.position.set(10,15,8); dir.castShadow = true; scene.add(dir);
+
+  // Ground (now optional)
+  let ground = null;
+  let showFloor = true;
+  
+  function createFloor() {
+    if(ground) {
+      scene.remove(ground);
+    }
+    ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(400,400), 
+      new THREE.MeshStandardMaterial({color:0x0d1730, roughness:.96, metalness:.05})
+    );
+    ground.rotation.x = -Math.PI/2; 
+    ground.receiveShadow = true; 
+    if(showFloor) {
+      scene.add(ground);
+    }
+  }
+  
+  function toggleFloor(visible) {
+    showFloor = visible;
+    if(ground) {
+      if(showFloor) {
+        scene.add(ground);
+      } else {
+        scene.remove(ground);
+      }
+    }
+    $('hudFloor').textContent = showFloor ? 'On' : 'Off';
+  }
+
+  // Stars group (procedural)
+  let stars = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color:0xffffff, size:1.2, sizeAttenuation:true }));
+  stars.frustumCulled=false; stars.renderOrder=-1;
+  let starCount = 0;
+
+  function rebuildStars(count=2000, size=1.2){
+    if(stars.parent) scene.remove(stars);
+    if(!count){ starCount=0; $('hudStars').textContent='0'; return; }
+    const positions = new Float32Array(count*3);
+    const R = 800;
+    for(let i=0;i<count;i++){
+      const u = Math.random();
+      const v = Math.random();
+      const theta = 2*Math.PI*u;
+      const phi = Math.acos(2*v-1);
+      const r = R * (0.75 + 0.25*Math.random());
+      positions[i*3+0] = r * Math.sin(phi)*Math.cos(theta);
+      positions[i*3+1] = r * Math.cos(phi);
+      positions[i*3+2] = r * Math.sin(phi)*Math.sin(theta);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(positions,3));
+    const m = new THREE.PointsMaterial({ color:0xffffff, size, sizeAttenuation:true, depthWrite:false, transparent:true, opacity:0.9 });
+    stars = new THREE.Points(g,m);
+    stars.frustumCulled=false; stars.renderOrder=-1;
+    scene.add(stars);
+    starCount=count; $('hudStars').textContent=String(count);
+  }
+
+  function setFog(str=0.15, hex=0x0b1120){
+    if(str<=0){ scene.fog = null; return; }
+    const near = 50; const far = 50 + 1500*str;
+    scene.fog = new THREE.Fog(hex, near, far);
+  }
+
+  // ========= Enhanced Movement System =========
+  const key = {};
+  let mouseX = 0, mouseY = 0;
+
+  window.addEventListener('keydown', (e) => { 
+    key[e.code] = true; 
+    if(e.code === 'KeyC') resetCameraPosition();
+    if(e.code === 'KeyF') following = true;
+  });
+  window.addEventListener('keyup', (e) => { key[e.code] = false; });
+
+  function resetCameraPosition() {
+    camera.position.set(10, 7, 14);
+    if(movementMode === 'orbit') {
+      controls.target.set(0, 0, 0);
+      controls.update();
+    } else {
+      euler.set(0, 0, 0);
+      camera.rotation.set(0, 0, 0);
+    }
+  }
+
+  function switchMovementMode(mode) {
+    movementMode = mode;
+    $('hudMovementMode').textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+    $('movementIndicator').textContent = mode.charAt(0).toUpperCase() + mode.slice(1) + ' Mode';
+    
+    if(mode === 'orbit') {
+      controls.enabled = true;
+      canvas.style.cursor = 'grab';
+      exitPointerLock();
+    } else {
+      controls.enabled = false;
+      canvas.style.cursor = 'none';
+      requestPointerLock();
+    }
+  }
+
+  function requestPointerLock() {
+    if(!isPointerLocked) {
+      canvas.requestPointerLock();
+    }
+  }
+
+  function exitPointerLock() {
+    if(isPointerLocked) {
+      document.exitPointerLock();
+    }
+  }
+
+  document.addEventListener('pointerlockchange', () => {
+    isPointerLocked = document.pointerLockElement === canvas;
+  });
+
+  canvas.addEventListener('click', () => {
+    if(movementMode !== 'orbit' && !isPointerLocked) {
+      requestPointerLock();
+    }
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if(movementMode !== 'orbit' && isPointerLocked) {
+      const sensitivity = mouseSensitivity * 0.002;
+      mouseX -= e.movementX * sensitivity;
+      mouseY -= e.movementY * sensitivity;
+      mouseY = Math.max(-Math.PI/2, Math.min(Math.PI/2, mouseY));
+      
+      euler.y = mouseX;
+      euler.x = mouseY;
+      camera.rotation.copy(euler);
+    }
+  });
+
+  function updateMovement(dt) {
+    if(movementMode === 'orbit') {
+      controls.update();
+      return;
+    }
+
+    const speed = moveSpeed * (key['ShiftLeft'] || key['ShiftRight'] ? sprintMultiplier : 1) * dt;
+    
+    direction.set(0, 0, 0);
+    
+    if(key['KeyW']) direction.z -= 1;
+    if(key['KeyS']) direction.z += 1;
+    if(key['KeyA']) direction.x -= 1;
+    if(key['KeyD']) direction.x += 1;
+
+    if(movementMode === 'free') {
+      if(key['Space']) direction.y += 1;
+      if(key['ShiftLeft'] || key['ShiftRight']) direction.y -= 1;
+    } else if(movementMode === 'fps') {
+      if(key['Space']) direction.y += 1; // jump
+    }
+
+    direction.normalize();
+    
+    if(movementMode === 'fps') {
+      // FPS mode - only move in XZ plane for WASD
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+      
+      forward.y = 0;
+      right.y = 0;
+      forward.normalize();
+      right.normalize();
+      
+      velocity.copy(forward.multiplyScalar(direction.z));
+      velocity.add(right.multiplyScalar(direction.x));
+      velocity.y = direction.y; // Jump/gravity
+      velocity.multiplyScalar(speed);
+    } else {
+      // Free flight mode
+      velocity.copy(direction);
+      velocity.applyQuaternion(camera.quaternion);
+      velocity.multiplyScalar(speed);
+    }
+
+    camera.position.add(velocity);
+  }
+
+  // ========= Node exploration =========
+  let node=null, nodeVel=new THREE.Vector3(); let thrust=4; let following=false;
+
+  function spawnNode(){ 
+    if(node){ scene.remove(node); } 
+    const geo = new THREE.SphereBufferGeometry(0.4, 24, 16); 
+    const mat = new THREE.MeshStandardMaterial({ 
+      color:0x87ffd1, metalness:0.1, roughness:0.3, 
+      emissive:0x072a28, emissiveIntensity:0.25 
+    }); 
+    node=new THREE.Mesh(geo,mat); 
+    node.castShadow=true; 
+    node.position.set(0,0.5,0); 
+    scene.add(node); 
+    following=true; 
+  }
+
+  let attractors=[];
+  function spawnAttractors(){ 
+    clearAttractors(); 
+    const aMat = new THREE.MeshBasicMaterial({color:0x7fffd4, wireframe:true, opacity:0.6, transparent:true});
+    for(let i=0;i<6;i++){ 
+      const m=new THREE.Mesh(new THREE.IcosahedronBufferGeometry(0.6,0),aMat); 
+      m.position.set((Math.random()-0.5)*40, 2+Math.random()*6, (Math.random()-0.5)*40); 
+      scene.add(m); 
+      attractors.push(m); 
+    }
+  }
+  function clearAttractors(){ attractors.forEach(m=>scene.remove(m)); attractors=[]; }
+
+  function stepNode(dt){ 
+    if(!node) return; 
+    const dir = new THREE.Vector3(); 
+    const right = new THREE.Vector3(); 
+    const up = new THREE.Vector3(0,1,0);
+    camera.getWorldDirection(dir); 
+    dir.y=0; 
+    dir.normalize(); 
+    right.crossVectors(dir, up).normalize().multiplyScalar(-1);
+    
+    let acc = new THREE.Vector3();
+    if(key['KeyW']) acc.add(dir);
+    if(key['KeyS']) acc.add(dir.clone().multiplyScalar(-1));
+    if(key['KeyA']) acc.add(right);
+    if(key['KeyD']) acc.add(right.clone().multiplyScalar(-1));
+    if(key['Space']) acc.add(up);
+    if(key['ShiftLeft']||key['ShiftRight']) acc.add(up.clone().multiplyScalar(-1));
+    
+    if(acc.lengthSq()>0){ 
+      acc.normalize().multiplyScalar(thrust); 
+      nodeVel.add(acc.multiplyScalar(dt)); 
+    }
+    nodeVel.multiplyScalar(0.98);
+    
+    for(const m of attractors){ 
+      const to = m.position.clone().sub(node.position); 
+      const d = to.length(); 
+      if(d>0.001){ 
+        const g = 6/d/d; 
+        nodeVel.add(to.normalize().multiplyScalar(g*dt*50)); 
+      } 
+    }
+    node.position.add(nodeVel.clone().multiplyScalar(dt));
+    
+    if(following){ 
+      const target = node.position.clone().add(new THREE.Vector3(8,5,10)); 
+      camera.position.lerp(target, 0.08); 
+      if(movementMode === 'orbit') {
+        controls.target.lerp(node.position, 0.1); 
+      }
+    }
+  }
+
+  // ========= Atmosphere controls =========
+  const bgLayer = $('bgLayer'); 
+  const bgVideo = $('bgVideo');
+  
+  function applyGradient(){ 
+    const top=$('gradTop').value; 
+    const bot=$('gradBot').value; 
+    bgVideo.pause(); 
+    bgVideo.style.display='none'; 
+    bgLayer.style.backgroundImage = `linear-gradient(180deg, ${top}, ${bot})`; 
+    scene.background=null; 
+  }
+  
+  function applyImage(url){ 
+    bgVideo.pause(); 
+    bgVideo.style.display='none'; 
+    bgLayer.style.backgroundImage = `url(${url})`; 
+    bgLayer.style.backgroundSize='cover'; 
+    bgLayer.style.backgroundPosition='center'; 
+    scene.background=null; 
+  }
+  
+  function applyVideo(url){ 
+    bgLayer.style.backgroundImage='none'; 
+    bgVideo.src=url; 
+    bgVideo.style.display='block'; 
+    bgVideo.play(); 
+    scene.background=null; 
+  }
+  
+  function applyPanorama(url){ 
+    bgVideo.pause(); 
+    bgVideo.style.display='none'; 
+    bgLayer.style.backgroundImage='none'; 
+    const tex = new THREE.TextureLoader().load(url, ()=>{ 
+      tex.mapping = THREE.EquirectangularReflectionMapping; 
+      tex.encoding = THREE.sRGBEncoding; 
+      scene.background = tex; 
+    }); 
+  }
+
+  function applyPanoramaVideo(url) {
+    bgLayer.style.backgroundImage='none';
+    const video = document.createElement('video');
+    video.src = url;
+    video.muted = true;
+    video.loop = true;
+    video.crossOrigin = 'anonymous';
+    
+    video.addEventListener('loadeddata', () => {
+      const texture = new THREE.VideoTexture(video);
+      texture.mapping = THREE.EquirectangularReflectionMapping;
+      texture.encoding = THREE.sRGBEncoding;
+      scene.background = texture;
+      video.play();
+    });
+    
+    bgVideo.pause();
+    bgVideo.style.display='none';
+  }
+
+  // ========= LAYERS: 2D overlays + 3D planes/billboards + Vectorization =========
+  const overlayHost = $('overlayHost');
+  let layers = [];
+  let selectedLayerId = null; 
+  let pendingAddType = '2d';
+  let isDragging = false;
+  let dragLayer = null;
+  let dragMode = 'move'; // 'move', 'scale', 'rotate'
+  let dragStart = {x: 0, y: 0};
+  let layerStart = {};
+
+  // Drag and manipulation for 2D overlays
+  overlayHost.addEventListener('pointerdown', (e) => {
+    const overlay = e.target.closest('.overlay');
+    if(!overlay) return;
+    
+    const layerId = layers.find(l => l.el === overlay)?.id;
+    if(!layerId) return;
+    
+    selectLayer(layerId);
+    
+    if(e.altKey) dragMode = 'scale';
+    else if(e.ctrlKey) dragMode = 'rotate';  
+    else dragMode = 'move';
+    
+    isDragging = true;
+    dragLayer = layers.find(l => l.id === layerId);
+    dragStart = {x: e.clientX, y: e.clientY};
+    
+    if(dragMode === 'move') {
+      layerStart = {u: dragLayer.u, v: dragLayer.v};
+    } else if(dragMode === 'scale') {
+      layerStart = {sizePct: dragLayer.sizePct};
+    } else if(dragMode === 'rotate') {
+      layerStart = {rot: dragLayer.rot};
+    }
+    
+    e.stopPropagation();
+    e.preventDefault();
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if(!isDragging || !dragLayer) return;
+    
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    
+    if(dragMode === 'move') {
+      const rect = overlayHost.getBoundingClientRect();
+      dragLayer.u = layerStart.u + (dx / rect.width) * 100;
+      dragLayer.v = layerStart.v + (dy / rect.height) * 100;
+      dragLayer.u = Math.max(0, Math.min(100, dragLayer.u));
+      dragLayer.v = Math.max(0, Math.min(100, dragLayer.v));
+      apply2DStyle(dragLayer);
+      renderInspector();
+    } else if(dragMode === 'scale') {
+      const scaleFactor = 1 + (dx - dy) * 0.01;
+      dragLayer.sizePct = Math.max(5, Math.min(200, layerStart.sizePct * scaleFactor));
+      apply2DStyle(dragLayer);
+      renderInspector();
+    } else if(dragMode === 'rotate') {
+      const rotation = (dx + dy) * 0.5;
+      dragLayer.rot = layerStart.rot + rotation;
+      dragLayer.rot = ((dragLayer.rot % 360) + 360) % 360;
+      if(dragLayer.rot > 180) dragLayer.rot -= 360;
+      apply2DStyle(dragLayer);
+      renderInspector();
+    }
+  });
+
+  document.addEventListener('pointerup', () => {
+    isDragging = false;
+    dragLayer = null;
+  });
+
+  // Vectorization function
+  async function vectorizeLayer(layer) {
+    if(!layer.el || layer.type !== '2d') return;
+    
+    const img = layer.el;
+    const detail = parseInt($('liTraceDetail').value);
+    
+    // Create a canvas to process the image
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    ctx.drawImage(img, 0, 0);
+    
+    // Simple edge detection and path tracing
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const svg = traceToSVG(imageData, detail);
+    
+    // Create SVG layer
+    addSVGLayer(svg, layer.name + ' (SVG)', layer.u, layer.v, layer.sizePct, layer.rot);
+  }
+
+  function traceToSVG(imageData, detail) {
+    const {width, height, data} = imageData;
+    const threshold = 128;
+    const step = Math.max(1, Math.floor(10 - detail));
+    
+    let paths = [];
+    let path = '';
+    
+    // Simple contour tracing
+    for(let y = 0; y < height; y += step) {
+      let inPath = false;
+      for(let x = 0; x < width; x += step) {
+        const idx = (y * width + x) * 4;
+        const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+        
+        if(gray > threshold && !inPath) {
+          if(path) paths.push(path);
+          path = `M ${x} ${y}`;
+          inPath = true;
+        } else if(gray > threshold && inPath) {
+          path += ` L ${x} ${y}`;
+        } else if(gray <= threshold && inPath) {
+          inPath = false;
+        }
+      }
+      if(inPath) {
+        inPath = false;
+      }
+    }
+    if(path) paths.push(path);
+    
+    const svgContent = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+      ${paths.map(p => `<path d="${p}" fill="none" stroke="#5eead4" stroke-width="${step}" opacity="0.8"/>`).join('\n')}
+    </svg>`;
+    
+    return svgContent;
+  }
+
+  function addSVGLayer(svgContent, name, u = 50, v = 50, sizePct = 40, rot = 0) {
+    const id = uid();
+    const svgBlob = new Blob([svgContent], {type: 'image/svg+xml'});
+    const src = URL.createObjectURL(svgBlob);
+    
+    const layer = { 
+      id, name, type: 'svg', visible: true, opacity: 1, blend: 'normal',
+      u, v, sizePct, rot, rotY: 0, src, svgContent
+    };
+    
+    create2DOverlay(layer);
+    layers.push(layer);
+    refreshLayerList();
+    selectLayer(id);
+  }
+
+  function addLayerFromFile(file, type='2d'){
+    const reader = new FileReader();
+    reader.onload = () => { const src = reader.result; addLayerFromDataURL(src, file.name, type); };
+    reader.readAsDataURL(file);
+  }
+  
+  function addLayerFromDataURL(src, name='Image', type='2d'){
+    const id = uid();
+    const base = { id, name, visible:true, opacity:1, blend:'normal', src };
+    if(type==='2d'){
+      const layer = { ...base, type:'2d', u:50, v:50, sizePct:40, rot:0, rotY:0 };
+      create2DOverlay(layer); layers.push(layer);
+    } else if(type==='3d' || type==='billboard'){
+      const layer = { ...base, type:type==='billboard'?'billboard':'3d', pos:{x:0,y:3,z:-5}, size:6, yaw:0, pitch:0, roll:0, billboard:(type==='billboard') };
+      create3DPlane(layer); layers.push(layer);
+    }
+    refreshLayerList(); selectLayer(id);
+  }
+  
+  function create2DOverlay(layer){
+    const img = document.createElement('img');
+    img.className='overlay'; img.draggable=false; img.src=layer.src; img.alt=layer.name; img.style.pointerEvents='auto';
+    img.addEventListener('pointerdown', (e)=>{ if(selectedLayerId!==layer.id){ selectLayer(layer.id); } });
+    overlayHost.appendChild(img); layer.el = img; apply2DStyle(layer);
+  }
+  
+  function apply2DStyle(layer){ 
+    if(!layer.el) return; 
+    const st = layer.el.style; 
+    st.opacity = String(layer.opacity); 
+    st.mixBlendMode = (layer.blend==='add'?'plus-lighter':layer.blend);
+    st.display = layer.visible? 'block':'none'; 
+    st.left = layer.u+'%'; 
+    st.top = layer.v+'%'; 
+    st.width = layer.sizePct+'%'; 
+    // Enhanced 2D rotation with Y-axis support
+    const rotY = layer.rotY || 0;
+    st.transform = `translate(-50%,-50%) rotateZ(${layer.rot}deg) rotateY(${rotY}deg)`; 
+  }
+
+  function create3DPlane(layer){
+    const loader = new THREE.TextureLoader(); 
+    loader.load(layer.src, (tex)=>{
+      tex.encoding = THREE.sRGBEncoding; 
+      tex.anisotropy = 4; 
+      const aspect = tex.image.width / tex.image.height;
+      let mesh; 
+      if(layer.billboard){ 
+        const mat = new THREE.SpriteMaterial({ map: tex, transparent:true, depthWrite:false, opacity:layer.opacity });
+        mesh = new THREE.Sprite(mat); 
+        mesh.scale.set(layer.size*aspect, layer.size, 1);
+      } else {
+        const geo = new THREE.PlaneGeometry(1,1); 
+        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent:true, opacity:layer.opacity, depthWrite:false });
+        mesh = new THREE.Mesh(geo, mat); 
+        mesh.scale.set(layer.size*aspect, layer.size, 1);
+      }
+      mesh.position.set(layer.pos.x, layer.pos.y, layer.pos.z); 
+      mesh.renderOrder=10; 
+      setThreeBlend(mesh, layer.blend);
+      layer.mesh = mesh; 
+      scene.add(mesh);
+      apply3DStyle(layer); // Apply initial rotation
+    });
+  }
+  
+  function setThreeBlend(obj, blend){ 
+    const mat = obj.material || obj; 
+    const map = { normal:THREE.NormalBlending, add:THREE.AdditiveBlending, multiply:THREE.MultiplyBlending };
+    mat.blending = map[blend] || THREE.NormalBlending; 
+    mat.needsUpdate = true; 
+  }
+  
+  function apply3DStyle(layer){ 
+    if(!layer.mesh) return; 
+    const m=layer.mesh; 
+    const mat=m.material; 
+    m.visible=layer.visible; 
+    if(mat){ mat.opacity=layer.opacity; setThreeBlend(m, layer.blend); } 
+    m.position.set(layer.pos.x, layer.pos.y, layer.pos.z); 
+    if(!layer.billboard){ 
+      // Enhanced 3D rotation with full Euler angles
+      const yaw = THREE.MathUtils.degToRad(layer.yaw || 0);
+      const pitch = THREE.MathUtils.degToRad(layer.pitch || 0);
+      const roll = THREE.MathUtils.degToRad(layer.roll || 0);
+      m.rotation.set(pitch, yaw, roll);
+    } 
+    const aspect = (m.material.map && m.material.map.image)? (m.material.map.image.width/m.material.map.image.height) : 1; 
+    if(m.isSprite){ m.scale.set(layer.size*aspect, layer.size, 1); } 
+    else { m.scale.set(layer.size*aspect, layer.size, 1); } 
+  }
+
+  function refreshOverlayLayouts(){ for(const L of layers){ if(L.type==='2d' || L.type==='svg') apply2DStyle(L); }}
+
+  function refreshLayerList(){ 
+    const list=$('layerList'); 
+    list.innerHTML=''; 
+    layers.forEach((L, idx)=>{
+      const row=document.createElement('div'); 
+      row.className='layerItem'; 
+      row.dataset.id=L.id;
+      const eye=document.createElement('button'); 
+      eye.textContent = L.visible? '👁':'🚫'; 
+      eye.title='Toggle visibility'; 
+      eye.addEventListener('click', ()=>{ 
+        L.visible=!L.visible; 
+        if(L.type==='2d' || L.type==='svg') apply2DStyle(L); 
+        else apply3DStyle(L); 
+        refreshLayerList(); 
+      });
+      const title=document.createElement('div'); 
+      title.innerHTML = `<div class="name">${L.name}</div><div class="type">${L.type}</div>`; 
+      title.style.cursor='pointer'; 
+      title.addEventListener('click', ()=> selectLayer(L.id));
+      const up=document.createElement('button'); 
+      up.textContent='▲'; 
+      up.addEventListener('click', ()=>{ 
+        const i=layers.findIndex(x=>x.id===L.id); 
+        if(i>0){ 
+          const tmp=layers[i-1]; 
+          layers[i-1]=layers[i]; 
+          layers[i]=tmp; 
+          reorderDOM(); 
+          refreshLayerList(); 
+        }
+      });
+      const down=document.createElement('button'); 
+      down.textContent='▼'; 
+      down.addEventListener('click', ()=>{ 
+        const i=layers.findIndex(x=>x.id===L.id); 
+        if(i<layers.length-1){ 
+          const tmp=layers[i+1]; 
+          layers[i+1]=layers[i]; 
+          layers[i]=tmp; 
+          reorderDOM(); 
+          refreshLayerList(); 
+        }
+      });
+      const del=document.createElement('button'); 
+      del.textContent='🗑'; 
+      del.className='bad'; 
+      del.addEventListener('click', ()=> deleteLayer(L.id));
+      row.append(eye, title, up, down, del);
+      if(L.id===selectedLayerId){ 
+        row.style.outline='1px solid var(--accent)'; 
+        row.style.borderColor='var(--accent)'; 
+      }
+      list.appendChild(row);
+    });
+    $('hudLayerCount').textContent = String(layers.length);
+  }
+  
+  function reorderDOM(){ 
+    overlayHost.innerHTML=''; 
+    layers.filter(L=>(L.type==='2d' || L.type==='svg')).forEach(L=>{ 
+      if(L.el) overlayHost.appendChild(L.el); 
+    });
+  }
+  
+  function deleteLayer(id){ 
+    const i=layers.findIndex(L=>L.id===id); 
+    if(i<0) return; 
+    const L=layers[i]; 
+    if(L.el && L.el.parentElement) L.el.parentElement.removeChild(L.el); 
+    if(L.mesh) scene.remove(L.mesh); 
+    layers.splice(i,1); 
+    if(selectedLayerId===id) selectedLayerId=null; 
+    refreshLayerList(); 
+    renderInspector(); 
+    $('selLayer').textContent='—'; 
+  }
+
+  function selectLayer(id){ 
+    selectedLayerId=id; 
+    layers.forEach(L=>{ 
+      if(L.el) L.el.classList.toggle('selected', L.id===id); 
+    }); 
+    renderInspector(); 
+    const L = layers.find(x=>x.id===id); 
+    $('selLayer').textContent = L? `${L.name}` : '—'; 
+  }
+
+  function renderInspector(){ 
+    const box=$('layerInspector'); 
+    if(!selectedLayerId){ box.style.display='none'; return; } 
+    const L=layers.find(x=>x.id===selectedLayerId); 
+    if(!L){ box.style.display='none'; return; }
+    box.style.display='block'; 
+    $('liName').value=L.name; 
+    $('liVisible').checked=L.visible; 
+    $('liOpacity').value=String(L.opacity); 
+    $('liBlend').value=L.blend;
+    const is2D = (L.type==='2d' || L.type==='svg'); 
+    $('li2D').style.display = is2D? 'block':'none'; 
+    $('li3D').style.display = is2D? 'none':'block';
+    if(is2D){ 
+      $('liX').value=String(L.u); 
+      $('liY').value=String(L.v); 
+      $('liSize').value=String(L.sizePct); 
+      $('liRot').value=String(L.rot); 
+      $('liRotY').value=String(L.rotY || 0);
+      // Show vectorize button only for regular 2D images
+      $('liVectorize').style.display = L.type === '2d' ? 'block' : 'none';
+    }
+    else { 
+      $('liPX').value=String(L.pos.x); 
+      $('liPY').value=String(L.pos.y); 
+      $('liPZ').value=String(L.pos.z); 
+      $('liPSize').value=String(L.size); 
+      $('liPRY').value=String(L.yaw||0); 
+      $('liPRX').value=String(L.pitch||0); 
+      $('liPRZ').value=String(L.roll||0);
+      $('liBillboard').checked=!!L.billboard; 
+    }
+  }
+
+  // ========= Export/Import =========
+  function savePNG(){ 
+    const data = renderer.domElement.toDataURL('image/png'); 
+    const b = atob(data.split(',')[1]); 
+    const len=b.length; 
+    const bytes=new Uint8Array(len); 
+    for(let i=0;i<len;i++) bytes[i]=b.charCodeAt(i); 
+    dl(new Blob([bytes],{type:'image/png'}), `world_atelier_enhanced_${Date.now()}.png`); 
+  }
+  
+  async function exportJSON(){ 
+    const state={ 
+      version: 'r5-enhanced-v2',
+      bgMode:$('bgMode').value, 
+      gradTop:$('gradTop').value, 
+      gradBot:$('gradBot').value, 
+      fogStrength:$('fogStrength').value, 
+      fogColor:$('fogColor').value, 
+      starCount:$('starCount').value, 
+      starSize:$('starSize').value, 
+      showFloor: showFloor,
+      movementMode: movementMode,
+      moveSpeed: moveSpeed,
+      sprintMultiplier: sprintMultiplier,
+      mouseSensitivity: mouseSensitivity,
+      thrust: $('thrust').value, 
+      node: node?{x:node.position.x,y:node.position.y,z:node.position.z}:null, 
+      attractors: attractors.map(a=>({x:a.position.x,y:a.position.y,z:a.position.z})), 
+      layers: await snapshotLayers() 
+    };
+    dl(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}), `world_atelier_session_${Date.now()}.json`); 
+  }
+
+  async function importJSON(file) {
+    try {
+      const text = await file.text();
+      const state = JSON.parse(text);
+      
+      // Clear existing
+      clearAll();
+      
+      // Restore settings
+      if(state.bgMode) $('bgMode').value = state.bgMode;
+      if(state.gradTop) $('gradTop').value = state.gradTop;
+      if(state.gradBot) $('gradBot').value = state.gradBot;
+      if(state.fogStrength) $('fogStrength').value = state.fogStrength;
+      if(state.fogColor) $('fogColor').value = state.fogColor;
+      if(state.starCount) $('starCount').value = state.starCount;
+      if(state.starSize) $('starSize').value = state.starSize;
+      
+      // Restore floor setting
+      if(state.hasOwnProperty('showFloor')) {
+        showFloor = state.showFloor;
+        $('showFloor').checked = showFloor;
+        toggleFloor(showFloor);
+      }
+      
+      if(state.movementMode) {
+        $('movementMode').value = state.movementMode;
+        switchMovementMode(state.movementMode);
+      }
+      if(state.moveSpeed) $('moveSpeed').value = state.moveSpeed;
+      if(state.sprintMultiplier) $('sprintMultiplier').value = state.sprintMultiplier;
+      if(state.mouseSensitivity) $('mouseSensitivity').value = state.mouseSensitivity;
+      if(state.thrust) $('thrust').value = state.thrust;
+      
+      // Apply background
+      $('bgMode').dispatchEvent(new Event('change'));
+      applyGradient();
+      setFog(parseFloat($('fogStrength').value), hexToInt($('fogColor').value));
+      
+      // Restore stars
+      if(state.starCount > 0) {
+        rebuildStars(parseInt(state.starCount), parseFloat(state.starSize));
+      }
+      
+      // Restore node
+      if(state.node) {
+        spawnNode();
+        if(node) {
+          node.position.set(state.node.x, state.node.y, state.node.z);
+        }
+      }
+      
+      // Restore attractors
+      if(state.attractors && state.attractors.length > 0) {
+        spawnAttractors();
+        state.attractors.forEach((pos, i) => {
+          if(attractors[i]) {
+            attractors[i].position.set(pos.x, pos.y, pos.z);
+          }
+        });
+      }
+      
+      // Restore layers
+      if(state.layers) {
+        for(const layerData of state.layers) {
+          if(layerData.type === 'svg') {
+            addSVGLayer(layerData.svgContent, layerData.name, layerData.u, layerData.v, layerData.sizePct, layerData.rot);
+          } else {
+            addLayerFromDataURL(layerData.src, layerData.name, layerData.type);
+          }
+          
+          // Apply layer properties
+          const layer = layers[layers.length - 1];
+          if(layer) {
+            layer.visible = layerData.visible;
+            layer.opacity = layerData.opacity;
+            layer.blend = layerData.blend;
+            
+            if(layerData.type === '2d' || layerData.type === 'svg') {
+              layer.u = layerData.u;
+              layer.v = layerData.v;
+              layer.sizePct = layerData.sizePct;
+              layer.rot = layerData.rot;
+              layer.rotY = layerData.rotY || 0;
+              apply2DStyle(layer);
+            } else {
+              layer.pos = layerData.pos;
+              layer.size = layerData.size;
+              layer.yaw = layerData.yaw;
+              layer.pitch = layerData.pitch || 0;
+              layer.roll = layerData.roll || 0;
+              layer.billboard = layerData.billboard;
+              apply3DStyle(layer);
+            }
+          }
+        }
+        refreshLayerList();
+      }
+      
+    } catch(e) {
+      console.error('Import failed:', e);
+      alert('Import failed. Please check the file format.');
+    }
+  }
+
+  function clearAll() {
+    // Clear layers
+    layers.forEach(layer => deleteLayer(layer.id));
+    layers = [];
+    
+    // Clear node and attractors  
+    if(node) scene.remove(node);
+    node = null;
+    clearAttractors();
+    
+    // Reset camera
+    resetCameraPosition();
+    
+    selectedLayerId = null;
+    refreshLayerList();
+    renderInspector();
+  }
+
+  async function snapshotLayers(){ 
+    const items=[]; 
+    for(const L of layers){ 
+      if(L.type==='2d'){ 
+        const src = await ensureDataURL(L.el); 
+        items.push({ 
+          type:'2d', name:L.name, visible:L.visible, opacity:L.opacity, 
+          blend:L.blend, u:L.u, v:L.v, sizePct:L.sizePct, rot:L.rot, rotY:L.rotY||0, src 
+        }); 
+      } else if(L.type==='svg') {
+        items.push({ 
+          type:'svg', name:L.name, visible:L.visible, opacity:L.opacity, 
+          blend:L.blend, u:L.u, v:L.v, sizePct:L.sizePct, rot:L.rot, rotY:L.rotY||0, 
+          src: L.src, svgContent: L.svgContent 
+        }); 
+      } else { 
+        const src=L.src; 
+        items.push({ 
+          type: L.billboard? 'billboard':'3d', name:L.name, visible:L.visible, 
+          opacity:L.opacity, blend:L.blend, pos:L.pos, size:L.size, 
+          yaw:L.yaw||0, pitch:L.pitch||0, roll:L.roll||0, src 
+        }); 
+      } 
+    } 
+    return items; 
+  }
+  
+  function ensureDataURL(img){ 
+    return new Promise((resolve)=>{ 
+      if(img.src.startsWith('data:')) return resolve(img.src); 
+      const can=document.createElement('canvas'); 
+      const ctx=can.getContext('2d'); 
+      can.width=img.naturalWidth; 
+      can.height=img.naturalHeight; 
+      ctx.drawImage(img,0,0); 
+      resolve(can.toDataURL('image/png')); 
+    }); 
+  }
+
+  // ========= UI wiring =========
+  function showPanel(id){ 
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active')); 
+    $(id).classList.add('active'); 
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); 
+    document.querySelector(`.tab[data-tab="${id.split('-')[1]}"]`).classList.add('active'); 
+  }
+  document.querySelectorAll('.tab').forEach(t=> t.addEventListener('click',()=> showPanel('panel-'+t.dataset.tab)) );
+
+  // Floor toggle
+  $('showFloor').addEventListener('change', () => {
+    toggleFloor($('showFloor').checked);
+  });
+
+  // Movement controls
+  $('movementMode').addEventListener('change', () => {
+    const mode = $('movementMode').value;
+    switchMovementMode(mode);
+  });
+
+  $('moveSpeed').addEventListener('input', () => {
+    moveSpeed = parseFloat($('moveSpeed').value);
+  });
+
+  $('sprintMultiplier').addEventListener('input', () => {
+    sprintMultiplier = parseFloat($('sprintMultiplier').value);
+  });
+
+  $('mouseSensitivity').addEventListener('input', () => {
+    mouseSensitivity = parseFloat($('mouseSensitivity').value);
+  });
+
+  $('bgMode').addEventListener('change', ()=>{
+    const mode=$('bgMode').value; 
+    $('gradOpts').style.display= (mode==='gradient')? 'grid' : 'none'; 
+    $('imgBtns').style.display=(mode==='image'||mode==='panorama')? 'grid' : 'none'; 
+    $('vidBtns').style.display= (mode==='video')? 'grid' : 'none'; 
+    $('panoVidBtns').style.display= (mode==='panorama-video')? 'grid' : 'none'; 
+    $('starOpts').style.display=(mode==='stars')? 'block' : 'none';
+    if(mode==='gradient') applyGradient();
+    if(mode==='stars') rebuildStars(parseInt($('starCount').value,10), parseFloat($('starSize').value)); 
+    else { if(stars.parent) scene.remove(stars); $('hudStars').textContent='0'; }
+  });
+  $('gradTop').addEventListener('input', applyGradient);
+  $('gradBot').addEventListener('input', applyGradient);
+
+  $('pickImage').addEventListener('click', ()=> $('fileImage').click());
+  $('fileImage').addEventListener('change', e=>{ const f=e.target.files[0]; if(!f) return; const url=URL.createObjectURL(f); applyImage(url); });
+  $('clearImage').addEventListener('click', ()=>{ bgLayer.style.backgroundImage='none'; });
+
+  $('pickVideo').addEventListener('click', ()=> $('fileVideo').click());
+  $('fileVideo').addEventListener('change', e=>{ const f=e.target.files[0]; if(!f) return; const url=URL.createObjectURL(f); applyVideo(url); });
+  $('stopVideo').addEventListener('click', ()=>{ bgVideo.pause(); bgVideo.removeAttribute('src'); bgVideo.load(); bgVideo.style.display='none'; });
+
+  // Panorama controls
+  const imgBtns = $('imgBtns'); 
+  if(!$('pickPanorama')) {
+    imgBtns.children[0].insertAdjacentHTML('afterend','<button id="pickPanorama">🖼 Load Panorama</button>');
+    $('pickPanorama').addEventListener('click', ()=>{ if($('bgMode').value!=='panorama'){ $('bgMode').value='panorama'; $('bgMode').dispatchEvent(new Event('change')); } $('filePanorama').click(); });
+  }
+  $('filePanorama').addEventListener('change', e=>{ const f=e.target.files[0]; if(!f) return; const url=URL.createObjectURL(f); applyPanorama(url); });
+
+  // Panorama video controls
+  $('pickPanoVideo').addEventListener('click', ()=> $('filePanoVideo').click());
+  $('filePanoVideo').addEventListener('change', e=>{ const f=e.target.files[0]; if(!f) return; const url=URL.createObjectURL(f); applyPanoramaVideo(url); });
+  $('stopPanoVideo').addEventListener('click', ()=>{ scene.background = null; });
+
+  $('fogStrength').addEventListener('input', ()=> setFog(parseFloat($('fogStrength').value), hexToInt($('fogColor').value)) );
+  $('fogColor').addEventListener('input', ()=> setFog(parseFloat($('fogStrength').value), hexToInt($('fogColor').value)) );
+
+  $('starCount').addEventListener('input', ()=>{ $('vStarCount').textContent=$('starCount').value; if($('bgMode').value==='stars') rebuildStars(parseInt($('starCount').value,10), parseFloat($('starSize').value)); });
+  $('starSize').addEventListener('input', ()=>{ if(stars.material){ stars.material.size=parseFloat($('starSize').value); } });
+
+  $('spawnNode').addEventListener('click', ()=>{ spawnNode(); });
+  $('followNode').addEventListener('click', ()=>{ following=true; });
+  $('thrust').addEventListener('input', ()=>{ thrust=parseFloat($('thrust').value); });
+
+  $('spawnAttractors').addEventListener('click', spawnAttractors);
+  $('clearAttractors').addEventListener('click', clearAttractors);
+
+  $('savePNG').addEventListener('click', savePNG);
+  $('exportJSON').addEventListener('click', exportJSON);
+  $('importJSON').addEventListener('click', ()=> $('fileImport').click());
+  $('fileImport').addEventListener('change', e=>{ const f=e.target.files[0]; if(f) importJSON(f); });
+  $('resetAll').addEventListener('click', ()=> { if(confirm('Reset everything?')) clearAll(); });
+
+  // Layer inspector wiring
+  $('liName').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L) return; L.name=$('liName').value; refreshLayerList(); });
+  $('liVisible').addEventListener('change', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L) return; L.visible=$('liVisible').checked; if(L.type==='2d'||L.type==='svg') apply2DStyle(L); else apply3DStyle(L); refreshLayerList(); });
+  $('liOpacity').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L) return; L.opacity=parseFloat($('liOpacity').value); if(L.type==='2d'||L.type==='svg') apply2DStyle(L); else apply3DStyle(L); });
+  $('liBlend').addEventListener('change', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L) return; L.blend=$('liBlend').value; if(L.type==='2d'||L.type==='svg') apply2DStyle(L); else apply3DStyle(L); });
+
+  $('liX').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L) return; L.u=parseFloat($('liX').value); apply2DStyle(L); });
+  $('liY').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L) return; L.v=parseFloat($('liY').value); apply2DStyle(L); });
+  $('liSize').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L) return; L.sizePct=parseFloat($('liSize').value); apply2DStyle(L); });
+  $('liRot').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L) return; L.rot=parseFloat($('liRot').value); apply2DStyle(L); });
+  $('liRotY').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L) return; L.rotY=parseFloat($('liRotY').value); apply2DStyle(L); });
+  $('liCenter').addEventListener('click', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||(L.type!=='2d'&&L.type!=='svg')) return; L.u=50; L.v=50; renderInspector(); apply2DStyle(L); });
+  $('liFit').addEventListener('click', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||(L.type!=='2d'&&L.type!=='svg')) return; L.sizePct=100; renderInspector(); apply2DStyle(L); });
+  $('liVectorize').addEventListener('click', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(L) vectorizeLayer(L); });
+
+  $('liPX').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||L.type==='2d'||L.type==='svg') return; L.pos.x=parseFloat($('liPX').value); apply3DStyle(L); });
+  $('liPY').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||L.type==='2d'||L.type==='svg') return; L.pos.y=parseFloat($('liPY').value); apply3DStyle(L); });
+  $('liPZ').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||L.type==='2d'||L.type==='svg') return; L.pos.z=parseFloat($('liPZ').value); apply3DStyle(L); });
+  $('liPSize').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||L.type==='2d'||L.type==='svg') return; L.size=parseFloat($('liPSize').value); apply3DStyle(L); });
+  $('liPRY').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||L.type==='2d'||L.type==='svg') return; L.yaw=parseFloat($('liPRY').value); apply3DStyle(L); });
+  $('liPRX').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||L.type==='2d'||L.type==='svg') return; L.pitch=parseFloat($('liPRX').value); apply3DStyle(L); });
+  $('liPRZ').addEventListener('input', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||L.type==='2d'||L.type==='svg') return; L.roll=parseFloat($('liPRZ').value); apply3DStyle(L); });
+  $('liBillboard').addEventListener('change', ()=>{ const L=layers.find(x=>x.id===selectedLayerId); if(!L||L.type==='2d'||L.type==='svg') return; L.billboard=$('liBillboard').checked; if(L.mesh && !L.mesh.isSprite && L.billboard){ const tex=L.mesh.material.map; const aspect = tex && tex.image? tex.image.width/tex.image.height : 1; const mat = new THREE.SpriteMaterial({ map: tex, transparent:true, depthWrite:false, opacity:L.opacity }); const sp = new THREE.Sprite(mat); sp.position.copy(L.mesh.position); sp.scale.set(L.size*aspect, L.size, 1); scene.remove(L.mesh); L.mesh=sp; scene.add(sp);
+    } else if(L.mesh && L.mesh.isSprite && !L.billboard){ const tex=L.mesh.material.map; const aspect = tex && tex.image? tex.image.width/tex.image.height : 1; const geo=new THREE.PlaneGeometry(1,1); const mat=new THREE.MeshBasicMaterial({ map: tex, transparent:true, opacity:L.opacity, depthWrite:false }); const m=new THREE.Mesh(geo,mat); m.position.copy(L.mesh.position); m.scale.set(L.size*aspect, L.size, 1); scene.remove(L.mesh); L.mesh=m; scene.add(m); }
+    apply3DStyle(L);
+  });
+  $('liUp').addEventListener('click', ()=>{ const i=layers.findIndex(x=>x.id===selectedLayerId); if(i>0){ const t=layers[i-1]; layers[i-1]=layers[i]; layers[i]=t; reorderDOM(); refreshLayerList(); }});
+  $('liDown').addEventListener('click', ()=>{ const i=layers.findIndex(x=>x.id===selectedLayerId); if(i<layers.length-1){ const t=layers[i+1]; layers[i+1]=layers[i]; layers[i]=t; reorderDOM(); refreshLayerList(); }});
+  $('liDelete').addEventListener('click', ()=>{ if(selectedLayerId) deleteLayer(selectedLayerId); });
+
+  // Buttons to add layers
+  $('addLayer2D').addEventListener('click', ()=>{ pendingAddType='2d'; $('fileLayer').click(); });
+  $('addLayer3D').addEventListener('click', ()=>{ pendingAddType='3d'; $('fileLayer').click(); });
+  $('addLayerBillboard').addEventListener('click', ()=>{ pendingAddType='billboard'; $('fileLayer').click(); });
+  $('fileLayer').addEventListener('change', (e)=>{ const files=[...e.target.files]; files.forEach(f=> addLayerFromFile(f, pendingAddType)); e.target.value=''; });
+
+  // Drag & Drop add as 2D overlay by default
+  const stage = $('stage');
+  stage.addEventListener('dragover', (e)=>{ e.preventDefault(); });
+  stage.addEventListener('drop', (e)=>{ e.preventDefault(); const files=[...e.dataTransfer.files].filter(f=>/^image\//.test(f.type)); files.forEach(f=> addLayerFromFile(f, '2d')); });
+
+  // ========= Animate =========
+  const clock = new THREE.Clock();
+  let lastTime = 0;
+  
+  function loop(){ 
+    const currentTime = performance.now();
+    const dt = Math.min(0.033, clock.getDelta()); 
+    
+    updateMovement(dt);
+    stepNode(dt);
+    
+    // orient billboards
+    for(const L of layers){ 
+      if((L.type!=='2d' && L.type!=='svg') && L.billboard && L.mesh && !L.mesh.isSprite){ 
+        L.mesh.lookAt(camera.position); 
+      } 
+    }
+    
+    const renderStart = performance.now();
+    renderer.render(scene, camera);
+    const renderTime = performance.now() - renderStart;
+    
+    // Update HUD
+    if(currentTime - lastTime > 100) { // Update every 100ms
+      $('hudFPS').textContent = Math.round(1000 / (currentTime - lastTime)).toString();
+      $('hudDraw').textContent = renderTime.toFixed(1) + 'ms';
+      lastTime = currentTime;
+    }
+    
+    $('hudNodes').textContent = node? '1' : '0'; 
+    $('camPos').textContent = `${camera.position.x.toFixed(1)},${camera.position.y.toFixed(1)},${camera.position.z.toFixed(1)}`; 
+    if(node) $('nodePos').textContent = `${node.position.x.toFixed(1)},${node.position.y.toFixed(1)},${node.position.z.toFixed(1)}`; 
+  }
+  
+  function raf(){ loop(); requestAnimationFrame(raf); }
+
+  new ResizeObserver(resize).observe(canvas.parentElement); 
+  resize();
+  
+  // Initialize
+  createFloor();
+  toggleFloor(true);
+  switchMovementMode('orbit');
+  applyGradient(); 
+  setFog(parseFloat($('fogStrength').value), hexToInt($('fogColor').value));
+  
+  raf();
+  </script>
+</body>
+</html>
